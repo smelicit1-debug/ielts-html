@@ -793,6 +793,42 @@ function collapseAllQA(){
     if(icon)icon.className='ti ti-chevron-down';
   });
 }
+function renderGameEnd(){
+  const s=game.score||0,t=game.total||1,st=game.bestStreak||0,el=game.elapsed||0;
+  const m=Math.floor(el/60),sec=el%60;
+  // Clear timer if running
+  if(game.timerInterval){clearInterval(game.timerInterval);game.timerInterval=null;}
+  // Flashcard-specific end screen
+  if(game.mode==='flash'){
+    const pct=Math.round(s/t*100);
+    document.getElementById('mainContent').innerHTML=`
+      <div class="game-wrap">
+        <div class="game-end">
+          <div class="game-end-icon">📚</div>
+          <h2>Study Complete!</h2>
+          <div class="game-end-score">${s}/${t}</div>
+          <p style="color:var(--text-secondary)">${pct}% rated Easy · ${st} streak</p>
+          <p class="game-end-msg">${pct>=80?'Excellent recall! 🌟':pct>=50?'Good progress! 👍':'Keep reviewing! 💪'}</p>
+          <button class="btn primary" onclick="game={active:false};render()" style="font-size:15px;padding:10px 28px"><i class="ti ti-home"></i> Game Menu</button>
+        </div>
+      </div>`;
+    return;
+  }
+  // Classic/Drag end screen
+  const msgs=["Keep practicing! 💪","Good effort! 👍","Nice work! 👏","Great job! 🌟","IELTS ready! 🎯","Absolute legend! 🏆"];
+  const msgIdx=Math.min(Math.floor(s/3),msgs.length-1);
+  document.getElementById('mainContent').innerHTML=`
+    <div class="game-wrap">
+      <div class="game-end">
+        <div class="game-end-icon">${s>=10?"🎉":"💪"}</div>
+        <h2>Game Over!</h2>
+        <div class="game-end-score">${s}/${t}</div>
+        <p style="color:var(--text-secondary)">Best streak: ${st} · Time: ${m}:${sec.toString().padStart(2,'0')}</p>
+        <p class="game-end-msg">${msgs[msgIdx]}</p>
+        <button class="btn primary" onclick="game={active:false};render()" style="font-size:15px;padding:10px 28px"><i class="ti ti-home"></i> Game Menu</button>
+      </div>
+    </div>`;
+}
 function render(){
   renderSidebar();
   if(state.currentTab==='resume')renderResume();
@@ -801,28 +837,14 @@ function render(){
 }
 
 function renderGame(){
+  // Route to the correct game renderer, which handles end screen too
   if(game.mode&&game.active){
-    if(game.mode==='classic')renderClassicGame();
-    else if(game.mode==='drag')renderDragGame();
-    else if(game.mode==='flash')renderFlashcardGame();
-    return;
+    if(game.mode==='classic'){renderClassicGame();return;}
+    if(game.mode==='drag'){renderDragGame();return;}
+    if(game.mode==='flash'){renderFlashcardGame();return;}
   }
   if(game.active&&game.idx>=game.total){
-    const s=game.score||0,t=game.total||15,st=game.bestStreak||0,el=game.elapsed||0;
-    const m=Math.floor(el/60),sec=el%60;
-    const msgs=["Keep practicing! 💪","Good effort! 👍","Nice work! 👏","Great job! 🌟","IELTS ready! 🎯","Absolute legend! 🏆"];
-    const msgIdx=Math.min(Math.floor(s/3),msgs.length-1);
-    document.getElementById('mainContent').innerHTML=`
-      <div class="game-wrap">
-        <div class="game-end">
-          <div class="game-end-icon">${s>=10?"🎉":"💪"}</div>
-          <h2>Game Over!</h2>
-          <div class="game-end-score">${s}/${t}</div>
-          <p style="color:var(--text-secondary)">Best streak: ${st} · Time: ${m}:${sec.toString().padStart(2,'0')}</p>
-          <p class="game-end-msg">${msgs[msgIdx]}</p>
-          <button class="btn primary" onclick="game={active:false};render()" style="font-size:15px;padding:10px 28px"><i class="ti ti-home"></i> Game Menu</button>
-        </div>
-      </div>`;
+    renderGameEnd();
     return;
   }
   document.getElementById('mainContent').innerHTML=`
@@ -865,7 +887,7 @@ function startClassicGame(){
 }
 
 function renderClassicGame(){
-  if(game.idx>=game.total){render();return;}
+  if(game.idx>=game.total){renderGameEnd();return;}
   const q=game.questions[game.idx];
   const others=TOPICS.filter(t=>t.id!==q.tid).sort(()=>Math.random()-.5).slice(0,3);
   const opts=[{id:q.tid,name:TOPICS.find(t=>t.id===q.tid).name},...others.map(t=>({id:t.id,name:t.name}))].sort(()=>Math.random()-.5);
@@ -904,11 +926,12 @@ function startDragGame(){
   const topics=[...new Set(shuffled.map(s=>s.tid))].sort(()=>Math.random()-.5).slice(0,4);
   const questions=shuffled.filter(s=>topics.includes(s.tid)).slice(0,8);
   game={mode:'drag',active:true,questions,idx:0,score:0,total:questions.length,streak:0,bestStreak:0,answered:false,startTime:Date.now(),timerInterval:null,elapsed:0,dragSlots:topics,dragPlaced:{}};
+  game.timerInterval=setInterval(()=>{game.elapsed=Math.floor((Date.now()-game.startTime)/1000);},1000);
   render();
 }
 
 function renderDragGame(){
-  if(game.idx>=game.total){render();return;}
+  if(game.idx>=game.total){renderGameEnd();return;}
   const current=game.questions[game.idx];
   const placed=Object.entries(game.dragPlaced).filter(([k,v])=>v!==null);
   const m=Math.floor(game.elapsed/60),sec=game.elapsed%60;
@@ -977,24 +1000,13 @@ function startFlashcardGame(){
   const shuffled=pool.sort(()=>Math.random()-.5);
   const deck=shuffled.map(c=>({...c,rating:null}));
   game={mode:'flash',active:true,deck,idx:0,score:0,total:deck.length,streak:0,flipped:false,startTime:Date.now(),timerInterval:null,elapsed:0};
+  game.timerInterval=setInterval(()=>{game.elapsed=Math.floor((Date.now()-game.startTime)/1000);},1000);
   render();
 }
 
 function renderFlashcardGame(){
   if(!game.deck||game.idx>=game.deck.length){
-    const total=game.total||1,correct=game.score||0;
-    const pct=Math.round(correct/total*100);
-    document.getElementById('mainContent').innerHTML=`
-      <div class="game-wrap">
-        <div class="game-end">
-          <div class="game-end-icon">📚</div>
-          <h2>Study Complete!</h2>
-          <div class="game-end-score">${correct}/${total}</div>
-          <p style="color:var(--text-secondary)">${pct}% rated Easy · ${game.streak||0} streak</p>
-          <p class="game-end-msg">${pct>=80?'Excellent recall! 🌟':pct>=50?'Good progress! 👍':'Keep reviewing! 💪'}</p>
-          <button class="btn primary" onclick="game={active:false};render()" style="font-size:15px;padding:10px 28px"><i class="ti ti-home"></i> Game Menu</button>
-        </div>
-      </div>`;
+    renderGameEnd();
     return;
   }
   const card=game.deck[game.idx];
