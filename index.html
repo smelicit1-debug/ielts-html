@@ -1467,40 +1467,56 @@ function showWordPopup(word, x, y) {
     });
 }
 
-// Detect word selection / double-click on text content
+// Word lookup: double-click on desktop, long-press on mobile/tablet
+let longPressTimer = null;
+let longPressTriggered = false;
+
 document.addEventListener('dblclick', function(e) {
-  // Don't trigger on modals, input fields, contenteditable, or word popup itself
   if (e.target.closest('.modal') || e.target.closest('#wordPopup') || e.target.closest('.word-popup-overlay')) return;
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
   if (e.target.isContentEditable) return;
-
   const selection = window.getSelection();
   const selectedText = selection.toString().trim();
-
   if (selectedText && selectedText.length >= 2 && selectedText.length <= 45) {
     showWordPopup(selectedText, e.clientX, e.clientY);
   }
 });
 
-// Also detect text selection (mouseup) for mobile/tablet
-document.addEventListener('mouseup', function(e) {
-  // Only for mobile-sized screens where dblclick is unreliable
-  if (window.innerWidth > 768) return;
+document.addEventListener('touchstart', function(e) {
   if (e.target.closest('.modal') || e.target.closest('#wordPopup') || e.target.closest('.word-popup-overlay')) return;
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
   if (e.target.isContentEditable) return;
+  longPressTriggered = false;
+  const touch = e.touches[0];
+  longPressTimer = setTimeout(() => {
+    longPressTriggered = true;
+    // Get the word at the touch point
+    const range = document.caretRangeFromPoint(touch.clientX, touch.clientY);
+    if (!range) return;
+    const textNode = range.startContainer;
+    if (!textNode || textNode.nodeType !== 3) return; // must be a text node
+    const text = textNode.textContent || '';
+    const offset = range.startOffset;
+    // Find the word boundaries around the offset
+    let start = offset, end = offset;
+    while (start > 0 && /[a-zA-Z']/.test(text[start - 1])) start--;
+    while (end < text.length && /[a-zA-Z']/.test(text[end])) end++;
+    const word = text.slice(start, end).replace(/[^a-zA-Z'-]/g, '').trim().toLowerCase();
+    if (word && word.length >= 2) {
+      // Cancel any text selection
+      window.getSelection().removeAllRanges();
+      showWordPopup(word, touch.clientX, touch.clientY);
+    }
+  }, 600);
+}, { passive: true });
 
-  const selection = window.getSelection();
-  const selectedText = selection.toString().trim();
+document.addEventListener('touchmove', function() {
+  if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+}, { passive: true });
 
-  if (selectedText && selectedText.length >= 2 && selectedText.length <= 45) {
-    // Use a small delay on mobile to avoid accidental triggers
-    if (window.wordPopupTimer) clearTimeout(window.wordPopupTimer);
-    window.wordPopupTimer = setTimeout(() => {
-      showWordPopup(selectedText, e.clientX, e.clientY);
-    }, 300);
-  }
-});
+document.addEventListener('touchend', function() {
+  if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+}, { passive: true });
 
 loadSaved();
 render();
